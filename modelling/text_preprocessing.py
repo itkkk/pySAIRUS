@@ -19,13 +19,13 @@ class TextPreprocessing:
             list_sentences.append(new_string)
         return list_sentences
 
-    def token_dict(self, df, text_field_name, id_field_name) -> dict:
+    def token_dict(self, df, field_text, field_id) -> dict:
         d = {}
         for i, r in df.iterrows():
             try:
-                splitted = r[text_field_name].split(' ')
+                splitted = r[field_text].split(' ')
                 splitted = self.remove_nonalpha(splitted)
-                d[r[id_field_name]] = splitted
+                d[r[field_id]] = splitted
             except AttributeError:
                 print("met nan. skipping")
         return d

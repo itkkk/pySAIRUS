@@ -2,10 +2,15 @@ import numpy as np
 import pandas as pd
 import torch
 import yaml
+from gensim.models import KeyedVectors
+
 from exceptions import *
-from modelling.sairus import train, train_w2v_model
+from modelling.sairus import train, train_w2v_model, keyedvectors_to_vec
 from os.path import exists, join
 from os import makedirs
+
+from modelling.text_preprocessing import TextPreprocessing
+
 seed = 123
 np.random.seed(seed)
 
@@ -36,7 +41,7 @@ if __name__ == "__main__":
     ne_technique_rel = model_params["ne_technique_rel"]
     ne_technique_spat = model_params["ne_technique_spat"]
     w2v_path = model_params["w2v_path"]
-    word_emb_size = int(model_params["word_emb_size"])
+    word_emb_size = 300
     w2v_epochs = int(model_params["w2v_epochs"])
 
     rel_adj_mat_path = spat_adj_mat_path = None
@@ -62,8 +67,10 @@ if __name__ == "__main__":
             raise Id2IdxException(lab="spat")
 
     competitor = False
-    users_embs_dict = train_w2v_model(embedding_size=word_emb_size, epochs=w2v_epochs, id_field_name=field_id,
-                                      model_dir=models_dir, text_field_name=field_text, train_df=train_df)
+    w2v_mod = KeyedVectors.load_word2vec_format(w2v_path, binary=True)
+    tok = TextPreprocessing()
+    token_dict = tok.token_dict(df=train_df, field_text=field_text, field_id=field_id)
+    users_embs_dict = keyedvectors_to_vec(w2v_mod, token_dict=token_dict)
 
     if not competitor:
         print("REL: {} SPAT: {}".format(consider_rel, consider_spat))

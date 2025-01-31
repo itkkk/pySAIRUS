@@ -1,3 +1,4 @@
+import gensim
 import numpy as np
 import pandas as pd
 import torch
@@ -19,6 +20,23 @@ from torch.optim import Adam
 from tqdm import tqdm
 from utils import load_from_pickle, save_to_pickle, plot_confusion_matrix
 np.random.seed(123)
+
+
+def keyedvectors_to_vec(mod: gensim.models.KeyedVectors, token_dict, emb_size=300):
+    d = {}
+    for u in token_dict:
+        list_temp = []
+        if token_dict[u]:
+            for w in token_dict[u]:
+                try:
+                    embed_vector = mod[w]
+                    list_temp.append(embed_vector)
+                except KeyError:
+                    list_temp.append(np.zeros(emb_size))
+            list_temp = np.array(list_temp)
+            list_temp = np.sum(list_temp, axis=0)
+            d[u] = list_temp
+    return d
 
 
 def train_w2v_model(embedding_size, epochs, id_field_name, model_dir, text_field_name, train_df):
@@ -50,7 +68,7 @@ def train_w2v_model(embedding_size, epochs, id_field_name, model_dir, text_field
         print("Loading word2vec model")
         w2v_model = load_from_pickle(join(model_dir, name))
     # split content in safe and dangerous
-    all_users_tokens = tok.token_dict(train_df, text_field_name=text_field_name, id_field_name=id_field_name)
+    all_users_tokens = tok.token_dict(train_df, field_text=text_field_name, field_id=id_field_name)
     all_users_embeddings = w2v_model.text_to_vec(users=all_users_tokens)  # Get a dict of all the embeddings of each user, keeping the association with the key
     return all_users_embeddings
 
@@ -210,8 +228,8 @@ def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_techni
         safe_ae = load_from_pickle(safe_ae_name)
 
     ################# TRAIN OR LOAD DECISION TREES ####################
-    model_dir_rel = join(model_dir, "node_embeddings", "rel")
-    model_dir_spat = join(model_dir, "node_embeddings", "spat")
+    model_dir_rel = join(model_dir, "rel")
+    model_dir_spat = join(model_dir, "spat")
     try:
         makedirs(model_dir_rel, exist_ok=False)
         makedirs(model_dir_spat, exist_ok=False)
@@ -296,12 +314,13 @@ def get_testset_dtree(node_emb_technique, idx, adj_matrix=None, n2v=None, pca=No
 
 
 def test(ae_dang, ae_safe, df, df_train, field_id, field_text, field_label, mlp: MLP, ne_technique_rel,
-         ne_technique_spat, tree_rel, tree_spat, w2v_model, consider_rel=True, consider_spat=True, id2idx_rel=None,
+         ne_technique_spat, tree_rel, tree_spat, w2v_model, word_emb_dim, consider_rel=True, consider_spat=True, id2idx_rel=None,
          id2idx_spat=None, mod_rel=None, mod_spat=None, rel_net_path=None, spat_net_path=None, cls_competitor=None):
     tok = TextPreprocessing()
-    posts = tok.token_dict(df, text_field_name=field_text, id_field_name=field_id)
+    posts = tok.token_dict(df, field_text=field_text, field_id=field_id)
+
+    posts_embs_dict = keyedvectors_to_vec(mod=w2v_model, token_dict=posts, emb_size=word_emb_dim)
     test_set = torch.zeros(len(posts), 7)
-    posts_embs_dict = w2v_model.text_to_vec(posts)
     posts_embs = torch.tensor(list(posts_embs_dict.values()), dtype=torch.float32)
     pred_dang = ae_dang.predict(posts_embs)
     pred_safe = ae_safe.predict(posts_embs)

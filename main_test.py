@@ -1,5 +1,9 @@
-from modelling.sairus import test
+from gensim.models import KeyedVectors
+
+from modelling.sairus import test, keyedvectors_to_vec
 from os.path import join
+
+from modelling.text_preprocessing import TextPreprocessing
 from utils import load_from_pickle, get_model
 import pandas as pd
 import yaml
@@ -29,7 +33,7 @@ def main_test(args=None):
     ne_technique_rel = model_params["ne_technique_rel"]
     ne_technique_spat = model_params["ne_technique_spat"]
     w2v_path = model_params["w2v_path"]
-    word_emb_size = int(model_params["word_emb_size"])
+    word_emb_size = 300
 
     adj_mat_spat_path = adj_mat_rel_path = None
     id2idx_rel_path = join(models_dir, "id2idx_rel.pkl")
@@ -39,7 +43,7 @@ def main_test(args=None):
 
     train_df = pd.read_csv(train_df)
     test_df = pd.read_csv(test_df)
-    w2v_model = load_from_pickle(w2v_path)
+    w2v_model = KeyedVectors.load_word2vec_format(w2v_path, binary=True)
 
     dang_ae = load_from_pickle(join(models_dir, "autoencoderdang_{}.pkl".format(word_emb_size)))
     safe_ae = load_from_pickle(join(models_dir, "autoencodersafe_{}.pkl".format(word_emb_size)))
@@ -69,7 +73,7 @@ def main_test(args=None):
              tree_spat=forest_spat, mlp=mlp, ne_technique_rel=ne_technique_rel, ne_technique_spat=ne_technique_spat,
              id2idx_rel=id2idx_rel, id2idx_spat=id2idx_spat, mod_rel=mod_rel, mod_spat=mod_spat, rel_net_path=path_rel,
              spat_net_path=path_spat, field_text=field_text, field_id=field_id, field_label=field_label,
-             consider_rel=consider_rel, consider_spat=consider_spat, cls_competitor=None)
+             consider_rel=consider_rel, consider_spat=consider_spat, cls_competitor=None, word_emb_dim=word_emb_size)
     else:
         mlp = None
         while not (consider_rel and consider_spat):
@@ -94,7 +98,7 @@ def main_test(args=None):
                  ne_technique_spat=ne_technique_spat, id2idx_rel=id2idx_rel, id2idx_spat=id2idx_spat, mod_rel=mod_rel,
                  mod_spat=mod_spat, rel_net_path=path_rel, spat_net_path=path_spat, field_text=field_text,
                  field_id=field_id, field_label=field_label, consider_rel=consider_rel, consider_spat=consider_spat,
-                 cls_competitor=cls_competitor, mlp=mlp)
+                 cls_competitor=cls_competitor, mlp=mlp, word_emb_dim=word_emb_size)
             print("\n\n")
             break
 
