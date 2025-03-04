@@ -1,3 +1,4 @@
+import torch
 from gensim.models import KeyedVectors
 
 from modelling.sairus import test, keyedvectors_to_vec
@@ -50,14 +51,15 @@ def main_test(args=None):
 
     competitor = False
     mod_rel = pca_rel = ae_rel = adj_mat_rel = id2idx_rel = mod_spat = pca_spat = ae_spat = adj_mat_spat = id2idx_spat = forest_rel = forest_spat = None
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     mod_rel, pca_rel, ae_rel, adj_mat_rel, id2idx_rel = get_model(technique=ne_technique_rel, mod_dir=mod_dir_rel,
                                                                   lab="rel", adj_mat_path=adj_mat_rel_path,
                                                                   id2idx_path=id2idx_rel_path, ne_dim=ne_dim_rel,
-                                                                  we_dim=word_emb_size)
+                                                                  we_dim=word_emb_size, device=device)
     mod_spat, pca_spat, ae_spat, adj_mat_spat, id2idx_spat = get_model(technique=ne_technique_spat,
                                                                        mod_dir=mod_dir_spat,
                                                                        lab="spat", adj_mat_path=adj_mat_spat_path,
-                                                                       id2idx_path=id2idx_spat_path,
+                                                                       id2idx_path=id2idx_spat_path, device=device,
                                                                        ne_dim=ne_dim_spat, we_dim=word_emb_size)
     if not competitor:
         forest_rel = load_from_pickle(join(mod_dir_rel, "forest_{}_{}.h5".format(ne_dim_rel, word_emb_size)))

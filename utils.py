@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import seaborn as sn
+import torch
+
 from exceptions import AdjMatException, Id2IdxException
 from gensim.models import Word2Vec
 from os.path import exists, join
@@ -9,6 +11,8 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+
+from node_classification.graph_embeddings.sage import SAGE
 
 
 def save_to_pickle(name, c):
@@ -37,7 +41,7 @@ def is_square(m):
     return m.shape[0] == m.shape[1]
 
 
-def get_model(technique, mod_dir, lab, ne_dim=None, adj_mat_path=None, id2idx_path=None, we_dim=None):
+def get_model(technique, mod_dir, lab, device, ne_dim=None, adj_mat_path=None, id2idx_path=None, we_dim=None):
     """
     Depending on the node embedding technique, loads and returns the models needed for inference
     :param technique: either be 'node2vec', 'graphsage', 'autoencoder', 'pca', 'none'
@@ -52,7 +56,16 @@ def get_model(technique, mod_dir, lab, ne_dim=None, adj_mat_path=None, id2idx_pa
     if technique == "node2vec":
         mod = Word2Vec.load(join(mod_dir, "n2v.h5"))
     elif technique == "graphsage":
-        mod = load_from_pickle(join(mod_dir, "graphsage_{}_{}.pkl".format(ne_dim, we_dim)))
+        if lab == "rel":
+            weighted = False
+            directed = True
+        else:
+            weighted = True
+            directed = False
+        num_layers = 2
+        mod = SAGE(in_dim=we_dim, hidden_dim=ne_dim, num_layers=num_layers, weighted=weighted, directed=directed)
+        mod = mod.to(device)
+        mod.load_state_dict(torch.load(join(mod_dir, "graphsage_{}_{}.h5".format(ne_dim, we_dim))))
     elif technique in ["autoencoder", "pca", "none"]:
         if not adj_mat_path:
             raise AdjMatException(lab)
