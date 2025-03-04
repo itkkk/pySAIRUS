@@ -30,6 +30,7 @@ if __name__ == "__main__":
     consider_content = train_dataset_params["consider_content"]
     consider_rel = train_dataset_params["consider_rel"]
     consider_spat = train_dataset_params["consider_spat"]
+    retrain = train_dataset_params["retrain"]
 
     models_dir = model_params["dir_models"]
     epochs_rel = model_params["epochs_rel"]
@@ -79,7 +80,7 @@ if __name__ == "__main__":
               node_emb_technique_spat=ne_technique_spat, node_emb_technique_rel=ne_technique_rel,
               node_emb_size_spat=ne_dim_spat, node_emb_size_rel=ne_dim_rel,
               weights=torch.tensor([neg_weight, pos_weight]), eps_nembs_spat=epochs_spat, eps_nembs_rel=epochs_rel,
-              adj_matrix_path_spat=spat_adj_mat_path, adj_matrix_path_rel=rel_adj_mat_path,
+              adj_matrix_path_spat=spat_adj_mat_path, adj_matrix_path_rel=rel_adj_mat_path, retrain=retrain,
               id2idx_path_rel=id2idx_rel_path, consider_rel=consider_rel, consider_spat=consider_spat,
               consider_content=consider_content, competitor=competitor, users_embs_dict=users_embs_dict)
     else:

@@ -10,6 +10,7 @@ train_dataset_params:
   consider_content: True
   consider_rel: True
   consider_spat: True
+  retrain: True
 test_dataset_params:
   test_df: "dataset/anthony/tweets.csv"
   test_social_net: "dataset/anthony/graph/social_network.edg"
@@ -28,6 +29,5 @@ model_params:
   ne_dim_spat: 128
   ne_technique_rel: "graphsage"
   ne_technique_spat: "graphsage"
-  w2v_path: "dataset/big_dataset/models/w2v_512.pkl"
-  word_emb_size: 512
+  w2v_path: "dataset/big_dataset/models/google_w2v.bin"
   w2v_epochs: 15

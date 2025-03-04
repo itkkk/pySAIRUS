@@ -14,7 +14,7 @@ from utils import is_square, embeddings_pca, load_from_pickle, save_to_pickle
 
 def reduce_dimension(emb_technique: str, lab, model_dir, ne_dim, train_df, we_dim, adj_matrix_path=None,
                      batch_size=None, edge_path=None, epochs=None, features_dict=None, id2idx_path=None,
-                     n_of_walks=10, p=1, q=4, sizes=None, walk_length=10, training_weights=None):
+                     n_of_walks=10, p=1, q=4, sizes=None, walk_length=10, training_weights=None, retrain=False):
     """
     This function applies one of the node dimensionality reduction techniques and generate the feature vectors for
     training the decision tree.
@@ -38,6 +38,7 @@ def reduce_dimension(emb_technique: str, lab, model_dir, ne_dim, train_df, we_di
         :param sizes: (graphsage) Array containing the number of neighbors to sample for each node.
         :param walk_length: (node2vec) Length of the walks that the n2v model will do.
         :param training_weights: tensor of shape (1, num_classes) containing the weights to give to each class while
+        :param retrain: If True, retrain the models even if they already exist
         training the graphsage model. If None, no weights will be used
     Returns:
         train_set: Array containing the node embeddings, which will be used for training the decision tree.
@@ -82,7 +83,7 @@ def reduce_dimension(emb_technique: str, lab, model_dir, ne_dim, train_df, we_di
                     directed=directed)
         sage = sage.to(device)
         train_loader = NeighborLoader(train_data, num_neighbors=sizes, batch_size=batch_size)
-        if not exists(weights_path):
+        if not exists(weights_path) or retrain:
             print("Training {} node embedding model\n".format(lab))
             optimizer = torch.optim.Adam(lr=.01, params=sage.parameters(), weight_decay=1e-4)
             best_loss = 9999

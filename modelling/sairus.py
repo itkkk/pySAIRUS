@@ -124,10 +124,6 @@ def learn_mlp(ae_dang, ae_safe, content_embs, id2idx_rel, id2idx_spat, model_dir
                                          id2idx=id2idx_spat, n2v=n2v_spat, cmi=cmi)
         dataset[:, 5], dataset[:, 6] = spat_part[:, 0], spat_part[:, 1]
 
-    #############   IMPORTANTE  #############
-    #### STO TRAINANDO IL MODELLO 3%      ###
-    #### CONSIDERANDO SOLO IL TESTO       ###
-    #########################################
     name = "mlp_{}".format(we_dim)
     if consider_rel:
         name += "_rel_{}".format(rel_dim)
@@ -175,7 +171,7 @@ def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_techni
           node_emb_size_rel, node_emb_size_spat, train_df, word_emb_size, users_embs_dict, adj_matrix_path_rel=None,
           adj_matrix_path_spat=None, batch_size=None, consider_content=True, consider_rel=True, consider_spat=True,
           eps_nembs_rel=None, eps_nembs_spat=None, id2idx_path_rel=None, id2idx_path_spat=None, path_rel=None,
-          path_spat=None, weights=None, competitor=False):
+          path_spat=None, weights=None, competitor=False, retrain=False):
     """
     Builds and trains the independent modules that analyze content, social relationships and spatial relationships, and
     then fuses them with the MLP
@@ -244,8 +240,8 @@ def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_techni
                                         id2idx_path=id2idx_path_rel, ne_dim=node_emb_size_rel, train_df=train_df,
                                         epochs=eps_nembs_rel, adj_matrix_path=adj_matrix_path_rel, sizes=[2, 3],
                                         features_dict=users_embs_dict, batch_size=batch_size, training_weights=weights,
-                                        we_dim=word_emb_size)
-        if not exists(rel_forest_path):
+                                        we_dim=word_emb_size, retrain=retrain)
+        if not exists(rel_forest_path) or retrain:
             train_random_forest(train_set=x_rel, dst_dir=rel_forest_path, train_set_labels=y_rel, name="rel")
         tree_rel = load_from_pickle(rel_forest_path)
 
@@ -254,8 +250,8 @@ def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_techni
                                           lab="spat", id2idx_path=id2idx_path_spat, ne_dim=node_emb_size_spat,
                                           train_df=train_df, epochs=eps_nembs_spat, adj_matrix_path=adj_matrix_path_spat,
                                           sizes=[3, 5], features_dict=users_embs_dict, batch_size=batch_size,
-                                          training_weights=weights, we_dim=word_emb_size)
-        if not exists(spat_forest_path):
+                                          training_weights=weights, we_dim=word_emb_size, retrain=retrain)
+        if not exists(spat_forest_path) or retrain:
             train_random_forest(train_set=x_spat, dst_dir=spat_forest_path, train_set_labels=y_spat, name="spat")
         tree_spat = load_from_pickle(spat_forest_path)
     # WE CAN NOW OBTAIN THE TRAINING SET FOR THE MLP
