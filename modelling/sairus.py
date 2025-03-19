@@ -72,10 +72,10 @@ def train_w2v_model(embedding_size, epochs, id_field_name, model_dir, text_field
     all_users_embeddings = w2v_model.text_to_vec(users=all_users_tokens)  # Get a dict of all the embeddings of each user, keeping the association with the key
     return all_users_embeddings
 
-
+# We added syb_content_embs parameter, containing embeddings of synthetic users
 def learn_mlp(ae_dang, ae_safe, content_embs, id2idx_rel, id2idx_spat, model_dir, node_embs_rel, node_embs_spat,
               tec_rel, tec_spat, train_df, tree_rel, tree_spat, y_train, we_dim, rel_dim, spat_dim, consider_rel=True,
-              consider_spat=True, n2v_rel=None, n2v_spat=None, weights=None):
+              consider_spat=True, n2v_rel=None, n2v_spat=None, weights=None, syn_content_embs=None, train_ft=None):
     """
     Train the MLP aimed at fusing the models
     Args:
@@ -97,8 +97,12 @@ def learn_mlp(ae_dang, ae_safe, content_embs, id2idx_rel, id2idx_spat, model_dir
         y_train: Train labels
         n2v_spat: spatial node2vec model
         n2v_rel: relational node2vec model
+        syn_content_embs: torch tensor containing the word embeddings of the content posted by the SYNTHETIC users. The features are z-score normalized
+        train_ft: train containing synthetic users
     Returns: The learned MLP
     """
+
+    # For real users
     dataset = torch.zeros((content_embs.shape[0], 7))
     prediction_dang = ae_dang.predict(content_embs)
     prediction_safe = ae_safe.predict(content_embs)
@@ -109,16 +113,42 @@ def learn_mlp(ae_dang, ae_safe, content_embs, id2idx_rel, id2idx_spat, model_dir
     for i in range(content_embs.shape[0]):
         prediction_loss_dang.append(loss(content_embs[i], prediction_dang[i]))
         prediction_loss_safe.append(loss(content_embs[i], prediction_safe[i]))
+    
+    # --DONE
+    # For syn users (same previous stuff of real users)
+    syn_dataset = torch.zeros((syn_content_embs.shape[0], 7))
+    syn_prediction_dang = ae_dang.predict(syn_content_embs)
+    syn_prediction_safe = ae_safe.predict(syn_content_embs)
+
+    loss = MSELoss()
+    syn_prediction_loss_dang = []
+    syn_prediction_loss_safe = []
+    for i in range(syn_content_embs.shape[0]):
+        syn_prediction_loss_dang.append(loss(syn_content_embs[i], syn_prediction_dang[i]))
+        syn_prediction_loss_safe.append(loss(syn_content_embs[i], syn_prediction_safe[i]))
+
+    # For real users
     labels = [1 if i < j else 0 for i, j in zip(prediction_loss_dang, prediction_loss_safe)]
     dataset[:, 0] = torch.tensor(prediction_loss_dang, dtype=torch.float32)
     dataset[:, 1] = torch.tensor(prediction_loss_safe, dtype=torch.float32)
     dataset[:, 2] = torch.tensor(labels, dtype=torch.float32)
 
+    # -- DONE
+    # For syn users (same previous stuff of real users)
+    labels = [1 if i < j else 0 for i, j in zip(syn_prediction_loss_dang, syn_prediction_loss_safe)]
+    syn_dataset[:, 0] = torch.tensor(syn_prediction_loss_dang, dtype=torch.float32)
+    syn_dataset[:, 1] = torch.tensor(syn_prediction_loss_safe, dtype=torch.float32)
+    syn_dataset[:, 2] = torch.tensor(labels, dtype=torch.float32)
+
+    # -- TO DO
+    # Please write code using syn_dataset
+    # in order to insert new ID's for syn users!
     cmi = 1.0
     if consider_rel:
         rel_part = get_relational_preds(technique=tec_rel, df=train_df, node_embs=node_embs_rel, tree=tree_rel,
                                         id2idx=id2idx_rel, n2v=n2v_rel, cmi=cmi)
         dataset[:, 3], dataset[:, 4] = rel_part[:, 0], rel_part[:, 1]
+        
     if consider_spat:
         spat_part = get_relational_preds(technique=tec_spat, df=train_df, node_embs=node_embs_spat, tree=tree_spat,
                                          id2idx=id2idx_spat, n2v=n2v_spat, cmi=cmi)
@@ -168,10 +198,10 @@ def get_relational_preds(technique, df, tree, node_embs, id2idx: dict, n2v, cmi,
 
 
 def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_technique_spat: str,
-          node_emb_size_rel, node_emb_size_spat, train_df, word_emb_size, users_embs_dict, adj_matrix_path_rel=None,
+          node_emb_size_rel, node_emb_size_spat, train_df, word_emb_size, users_embs_dict, train_ft=None,field_name_id_ft=None, syn_users_embs_dict=None, adj_matrix_path_rel=None,
           adj_matrix_path_spat=None, batch_size=None, consider_content=True, consider_rel=True, consider_spat=True,
           eps_nembs_rel=None, eps_nembs_spat=None, id2idx_path_rel=None, id2idx_path_spat=None, path_rel=None,
-          path_spat=None, weights=None, competitor=False, retrain=False):
+          path_spat=None, weights=None, competitor=False, fine_tuning=False, retrain=False, fine_tuning_edge_path=None):
     """
     Builds and trains the independent modules that analyze content, social relationships and spatial relationships, and
     then fuses them with the MLP
@@ -194,8 +224,12 @@ def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_techni
     :param id2idx_path_spat: Path to the file containing the dictionary that matches the node IDs to their index in the spatial adj matrix (graphsage, pca, autoencoder)
     :param path_rel: Path to the file stating the social relationships among the users
     :param path_spat: Path to the file stating the spatial relationships among the users
+    :param fine_tuning_edge_path: Path to the file stating the SYNTHETIC social relationships among the SYNTHETIC users
     :return: Nothing, the learned mlp will be saved in the file "mlp.h5" and put in the model directory
     """
+
+    # Make stuff for real training dataset
+    # We are generating embeddings for real users
     y_train = list(train_df['label'])
     dang_posts_ids = list(train_df.loc[train_df['label'] == 1][field_name_id])
     safe_posts_ids = list(train_df.loc[train_df['label'] == 0][field_name_id])
@@ -206,7 +240,21 @@ def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_techni
     dang_users_ar = np.array([users_embs_dict[k] for k in keys if k in dang_posts_ids])
     safe_users_ar = np.array([users_embs_dict[k] for k in keys if k in safe_posts_ids])
     posts_embs = torch.tensor(posts_embs, dtype=torch.float32)
+    
+    # -- DONE
+    # Make same previous stuff for synthetic dataset
+    # We are generating embeddings for syn users
+    if train_ft is not None:
+      y_train_ft = list(train_ft['label'])
+      dang_posts_ids_ft = list(train_ft.loc[train_ft['label'] == 1][field_name_id_ft])
+      safe_posts_ids_ft = list(train_ft.loc[train_ft['label'] == 0][field_name_id_ft])
 
+      posts_embs_ft = np.array(list(syn_users_embs_dict.values()))
+      keys_ft = list(syn_users_embs_dict.keys())
+
+      dang_users_ar_ft = np.array([syn_users_embs_dict[k] for k in keys_ft if k in dang_posts_ids_ft])
+      safe_users_ar_ft = np.array([syn_users_embs_dict[k] for k in keys_ft if k in safe_posts_ids_ft])
+      posts_embs_ft = torch.tensor(posts_embs_ft, dtype=torch.float32)
 
     ################# TRAIN AND LOAD SAFE AND DANGEROUS AUTOENCODER ####################
     dang_ae_name = join(model_dir, "autoencoderdang_{}.pkl".format(word_emb_size))
@@ -240,7 +288,8 @@ def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_techni
                                         id2idx_path=id2idx_path_rel, ne_dim=node_emb_size_rel, train_df=train_df,
                                         epochs=eps_nembs_rel, adj_matrix_path=adj_matrix_path_rel, sizes=[2, 3],
                                         features_dict=users_embs_dict, batch_size=batch_size, training_weights=weights,
-                                        we_dim=word_emb_size, retrain=retrain)
+                                        we_dim=word_emb_size, fine_tuning=fine_tuning, fine_tuning_edge_path=fine_tuning_edge_path, 
+                                        retrain=retrain)
         if not exists(rel_forest_path) or retrain:
             train_random_forest(train_set=x_rel, dst_dir=rel_forest_path, train_set_labels=y_rel, name="rel")
         tree_rel = load_from_pickle(rel_forest_path)
@@ -271,7 +320,7 @@ def train(field_name_id, model_dir, node_emb_technique_rel: str, node_emb_techni
                   node_embs_rel=x_rel, node_embs_spat=x_spat, tec_rel=node_emb_technique_rel,
                   tec_spat=node_emb_technique_spat, train_df=train_df, tree_rel=tree_rel, tree_spat=tree_spat,
                   y_train=y_train, n2v_rel=n2v_rel, n2v_spat=n2v_spat, weights=weights, we_dim=word_emb_size,
-                  rel_dim=node_emb_size_rel, spat_dim=node_emb_size_spat)
+                  rel_dim=node_emb_size_rel, spat_dim=node_emb_size_spat,syn_content_embs=posts_embs_ft)
     else:
         train_set_forest = posts_embs
         name = "forest"

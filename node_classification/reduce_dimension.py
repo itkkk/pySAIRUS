@@ -13,8 +13,9 @@ from utils import is_square, embeddings_pca, load_from_pickle, save_to_pickle
 
 
 def reduce_dimension(emb_technique: str, lab, model_dir, ne_dim, train_df, we_dim, adj_matrix_path=None,
-                     batch_size=None, edge_path=None, epochs=None, features_dict=None, id2idx_path=None,
-                     n_of_walks=10, p=1, q=4, sizes=None, walk_length=10, training_weights=None, retrain=False):
+                     batch_size=None, edge_path=None, epochs=None, features_dict=None, syn_features_dict=None, id2idx_path=None,
+                     n_of_walks=10, p=1, q=4, sizes=None, walk_length=10, training_weights=None, retrain=False, 
+                     fine_tuning=False, fine_tuning_edge_path=None, train_ft=None):
     """
     This function applies one of the node dimensionality reduction techniques and generate the feature vectors for
     training the decision tree.
@@ -31,6 +32,8 @@ def reduce_dimension(emb_technique: str, lab, model_dir, ne_dim, train_df, we_di
         :param epochs: (graphsage, node2vec) Epochs for training the node embedding model.
         :param features_dict: (graphsage) Dictionary having as keys the IDs of the users and as values the sum of the
         embeddings of their posts.
+        :param syn_features_dict: (graphsage) Dictionary having as keys the IDs of the SYNTHETIC users and as values the sum of the
+        embeddings of their posts.
         :param id2idx_path: (pca, autoencoder, none) Mapping between the node IDs and the rows in the adj matrix.
         :param n_of_walks: (node2vec) Number of walks that the n2v model will do.
         :param p: (node2vec) n2v's hyperparameter p.
@@ -39,7 +42,10 @@ def reduce_dimension(emb_technique: str, lab, model_dir, ne_dim, train_df, we_di
         :param walk_length: (node2vec) Length of the walks that the n2v model will do.
         :param training_weights: tensor of shape (1, num_classes) containing the weights to give to each class while
         :param retrain: If True, retrain the models even if they already exist
+        :param fine_tuning: If True, make fine tuning of relationship content
+        :param fine_tuning_edge_path: Path to file containing new relationships 
         training the graphsage model. If None, no weights will be used
+        :param train_ft: Path to SYNTHETIC dataset of users
     Returns:
         train_set: Array containing the node embeddings, which will be used for training the decision tree.
         train_set_labels: Labels of the training vectors.
@@ -75,6 +81,7 @@ def reduce_dimension(emb_technique: str, lab, model_dir, ne_dim, train_df, we_di
             directed = False
 
         mapper_train, inv_map_train = create_mappers(features_dict)
+
         graph = create_graph(inv_map=inv_map_train, weighted=weighted, features=features_dict, edg_dir=edge_path, df=train_df)
         split = T.RandomLinkSplit(num_val=0.1, num_test=0.0, is_undirected=not directed,
                                   add_negative_train_samples=False, neg_sampling_ratio=1.0,)
@@ -98,6 +105,58 @@ def reduce_dimension(emb_technique: str, lab, model_dir, ne_dim, train_df, we_di
                 if i % 5 == 0:
                     print("Epoch {}: train loss {}, val loss: {}".format(i, loss, val_loss))
         sage.load_state_dict(torch.load(weights_path))
+
+        # -- DONE
+        # Fine tuning for relational module
+        if fine_tuning:
+
+          if exists(weights_path):
+              print("Loading existing model for fine-tuning...")
+              sage.load_state_dict(torch.load(weights_path))
+          else:
+              print("No existing model found. Training from scratch.")
+
+          graph = create_graph(inv_map=inv_map_train, weighted=weighted, 
+                              features=features_dict, edg_dir=edge_path, df=train_df)
+
+          # -- Done: Added code to create mappers for synthetic users
+          syn_mapper_train, syn_inv_map_train = create_mappers(syn_features_dict)
+
+          # -- TO DO
+          # I need to create graph for SYNTHETIC users. 
+          # HOW? Is it a new graph? Or I have to append it to previous?
+          # In this line, syn_graph contains graph of synthetic users
+          '''
+          syn_graph = create_graph(inv_map=syn_inv_map_train, weighted=weighted, 
+                              features=syn_features_dict, edg_dir=edge_path, df=train_ft)
+          '''
+
+          fine_tuning_edge_path = fine_tuning_edge_path
+          if exists(fine_tuning_edge_path):
+            print(f"Loading new edges from ", fine_tuning_edge_path)
+            print("Loading additional edges for fine-tuning...")
+            with open(fine_tuning_edge_path, "r") as f:
+                new_edges = [line.strip().split() for line in f.readlines()]
+            new_edges = [(int(src), int(dst)) for src, dst in new_edges]
+
+            new_edge_index = torch.tensor(new_edges, dtype=torch.long).T  # Transpose for PyG format
+
+            graph.edge_index = torch.cat([graph.edge_index, new_edge_index], dim=1)
+
+          train_loader = NeighborLoader(graph, num_neighbors=sizes, batch_size=batch_size)
+          
+          print("Fine-tuning existing model...")
+          optimizer = torch.optim.Adam(lr=0.01, params=sage.parameters(), weight_decay=1e-4)
+
+          for i in range(epochs):  # Fine-tune for number of epochs
+              loss = sage.train_sage(train_loader, optimizer=optimizer, weights=training_weights)
+              print(f"Fine-tune Epoch {i}: loss {loss}")
+
+          torch.save(sage.state_dict(), weights_path)
+
+        else: # No fine tuning
+          sage.load_state_dict(torch.load(weights_path))
+
         train_set = sage(graph, inference=True)
         train_set = train_set.detach().numpy()
         for k in features_dict:

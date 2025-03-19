@@ -76,14 +76,14 @@ class SAGE(torch.nn.Module):
         self.weighted = weighted
         self.directed = directed
         if self.weighted:
-            self.convs.append(GraphConv(in_dim, hidden_dim, aggr="mean", normalize=True))
+            self.convs.append(GraphConv(in_dim, hidden_dim, aggr="mean"))
             for _ in range(num_layers-1):
-                self.convs.append(GraphConv(hidden_dim, hidden_dim, aggr="mean", normalize=True))
+                self.convs.append(GraphConv(hidden_dim, hidden_dim, aggr="mean"))
         else:
-            self.convs.append(SAGEConv(in_dim, hidden_dim, aggr="mean", normalize=True))
+            self.convs.append(SAGEConv(in_dim, hidden_dim, aggr="mean"))
             for _ in range(num_layers-1):
-                self.convs.append(SAGEConv(hidden_dim, hidden_dim, aggr="mean", normalize=True))
-        self.output = SAGEConv(hidden_dim, 2, aggr="mean", normalize=True)
+                self.convs.append(SAGEConv(hidden_dim, hidden_dim, aggr="mean"))
+        self.output = SAGEConv(hidden_dim, 2, aggr="mean")
 
     def forward(self, batch, inference=False):
         x = batch.x
